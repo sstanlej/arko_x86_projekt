@@ -9,6 +9,7 @@ scaledownhor:
     push r13
     push r14
     push r15
+    sub rsp, 48
     
     ; Rejestry:
     ; rdi - img
@@ -28,10 +29,11 @@ scaledownhor:
 
     xor r12d, r12d          ; x_new = 0
     mov eax, edx            ; eax = width
+    mov r13d, edx
     xor edx, edx            ; clear edx for division
     div r8d                 ; eax = width / scale
     mov ebx, eax            ; ebx = max_x_new (width / scale)
-    mov edx, [rbp + 24]     ; restore original width to edx
+    mov edx, r13d           ; restore original width to edx
 
 .x_loop:
     cmp r12d, ebx           ; x_new >= (width / scale)?
@@ -42,9 +44,9 @@ scaledownhor:
     imul eax, r8d           ; eax = orig_x
 
     ; Inicjalizacja maksimów
-    xor r13d, r13d          ; max_b = 0
-    xor r14d, r14d          ; max_g = 0
-    xor r15d, r15d          ; max_r = 0
+    mov dword [rsp + 0], 0    ; max_b = 0
+    mov dword [rsp + 4], 0    ; max_g = 0
+    mov dword [rsp + 8], 0    ; max_r = 0
 
     ; Pętla po i = 0..scale-1
     xor eax, eax            ; i = 0
@@ -54,31 +56,36 @@ scaledownhor:
     jge .store_pixel
 
     ; Oblicz x_old = orig_x + i
-    mov edx, r12d           ; edx = x_new
-    imul edx, r8d           ; edx = x_new * scale
-    add edx, eax            ; edx = x_old
+    mov r13d, r12d           ; edx = x_new
+    imul r13d, r8d           ; edx = x_new * scale
+    add r13d, eax            ; edx = x_old
 
     ; Oblicz offset w img: y * stride + x_old * 3
     mov r15d, r11d          ; r15d = y
     imul r15d, r9d          ; r15d = y * stride
-    mov ebx, edx            ; ebx = x_old
+    mov ebx, r13d            ; ebx = x_old
     imul ebx, 3             ; ebx = x_old * 3
     add r15d, ebx           ; r15d = offset (32-bit)
     movsxd r15, r15d        ; r15 = offset (64-bit)
 
     ; Porównaj B, G, R z maksimami
     movzx ebx, byte [rdi + r15]      ; B
-    cmp ebx, r13d
-    cmova r13d, ebx
+    cmp ebx, [rsp + 0]
+    mov r14d, [rsp + 0]
+    cmova r14d, ebx
+    mov [rsp + 0], r14d
 
     movzx ebx, byte [rdi + r15 + 1]  ; G
-    cmp ebx, r14d
+    cmp ebx, [rsp + 4]
+    mov r14d, [rsp + 4]
     cmova r14d, ebx
+    mov [rsp + 4], r14d
 
     movzx ebx, byte [rdi + r15 + 2]  ; R
-    push r15                 ; save r15
-    mov r15d, ebx            ; temporary store R
-    pop r15                  ; restore r15
+    cmp ebx, [rsp + 8]
+    mov r14d, [rsp + 8]
+    cmova r14d, ebx
+    mov [rsp + 8], r14d                 
 
     inc eax                  ; i++
     jmp .max_loop
@@ -87,15 +94,20 @@ scaledownhor:
     ; Oblicz offset w new_img: y * new_stride + x_new * 3
     mov eax, r11d           ; eax = y
     imul eax, r10d          ; eax = y * new_stride
-    mov edx, r12d           ; edx = x_new
-    imul edx, 3             ; edx = x_new * 3
-    add eax, edx            ; eax = offset (32-bit)
+    mov r14d, r12d           ; edx = x_new
+    imul r14d, 3             ; edx = x_new * 3
+    add eax, r14d            ; eax = offset (32-bit)
     movsxd rax, eax         ; rax = offset (64-bit)
 
     ; Zapisz piksel
-    mov [rsi + rax], r13b      ; B
-    mov [rsi + rax + 1], r14b  ; G
-    mov [rsi + rax + 2], r15b  ; R
+    mov al, byte [rsp + 0]
+    mov [rsi + rax], al       ; B
+
+    mov al, byte [rsp + 4]
+    mov [rsi + rax + 1], al   ; G
+
+    mov al, byte [rsp + 8]
+    mov [rsi + rax + 2], al   ; R
 
     inc r12d                ; x_new++
     jmp .x_loop
@@ -105,6 +117,7 @@ scaledownhor:
     jmp .y_loop
 
 .done:
+    add rsp, 48
     pop r15
     pop r14
     pop r13
